@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Radix Sort</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script src="jquery.min.js"></script>
+    <style>
+        .ball {
+            width: 56px;
+            height: 56px;
+            line-height: 56px;
+            border-radius: 30px;
+            border-style: solid;
+            border-width: 2px;
+            text-align: center;
+            display: inline-block;
+            font-size: 25px;
+            position: absolute;
+            left: 10px;
+            top: 10px;
+            cursor: default;
+        }
+
+        .ball:hover {
+            box-shadow: 0 0 5px gray;
+        }
+
+        .bag {
+            /*width: 640px;*/
+            height: 62px;
+            margin-top: 1px;
+            margin-bottom: 1px;
+            background-color: lightgrey;
+            position: absolute;
+            /*left: -100px;*/
+            z-index: 0;
+            line-height: 62px;
+            font-size: 60px;
+            color: white;
+            text-align: right;
+            padding-right: 10px;
+        }
+
+        .bag:hover {
+            color: orange;
+        }
+
+        .btn {
+            height: 50px;
+            font-size: 20px;
+            padding-left: 20px;
+            padding-right: 20px;
+            z-index: 999;
+        }
+
+        #start {
+            width: 400px;
+            margin: auto;
+            font-size: 40px;
+            position: relative;
+            top: 100px;
+            text-align: center;
+        }
+
+        input {
+            font-size: 40px;
+        }
+
+        #btn-next {
+            position: fixed;
+            right: 10px;
+            top: 10px;
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="start">
+        Start with <input type="number" step="1" min="2" max="20" value="10" id="size"/> numbers
+        <br><br>
+        <button type="buttom" class="btn" id="btn-start">GO</button>
+    </div>
+    <button type="buttom" class="btn" id="btn-next">NEXT</button>
+    <script>
+        var ballSize;
+        var max;
+        var turn;
+        var controlRun;
+        var bagStatus;
+        var headStatus;
+        var finish;
+
+        // return a random integer between a and b
+        function randInt(a, b) {
+            if (arguments.length == 2) {
+                return Math.floor(Math.random() * (b - a)) + a;
+            } else {
+                return Math.floor(Math.random() * a);
+            }
+        }
+
+        // return a random light background color
+        function randColor() {
+            var rgb = [randInt(150, 255).toString(16), randInt(150, 255).toString(16), randInt(150, 255).toString(16)];
+            return '#' + rgb.join('');
+        }
+
+        // make color darker or lighter
+        // see:
+        // https://www.sitepoint.com/javascript-generate-lighter-darker-color/
+        function ColorLuminance(hex, lum) {
+            // validate hex string
+            hex = String(hex).replace(/[^0-9a-f]/gi, '');
+            if (hex.length < 6) {
+                hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
+            }
+            lum = lum || 0;
+
+            // convert to decimal and change luminosity
+            var rgb = "#", c, i;
+            for (i = 0; i < 3; i++) {
+                c = parseInt(hex.substr(i * 2, 2), 16);
+                c = Math.round(Math.min(Math.max(0, c + (c * lum)), 255)).toString(16);
+                rgb += ("00" + c).substr(c.length);
+            }
+            return rgb;
+        }
+
+        // calculate position in pixels from row and col
+        function getPos(row, col) {
+            return {"left": 10+(col-1)*64, "top":10+(row-1)*64};
+        }
+
+        // move a ball to the specified row and col
+        function go(obj, row, col) {
+            var pos = obj.position();
+            var currentRow = Math.round((pos.top - 10)/64) + 1;
+            var currentCol = Math.round((pos.left - 10)/64) + 1;
+            obj.css('z-index', 99);
+            obj.animate(getPos(currentRow, col), Math.abs(currentCol - col)*100)
+            .animate(getPos(row, col), Math.abs(currentRow - row)*100, function(){obj.css('z-index', 2)});
+        }
+
+        // generate n balls
+        function makeBalls(n) {
+            var code;
+            var id;
+            var color;
+            var ball;
+            var num;
+            for (var i = 0; i < n; i++) {
+                id = "ball" + i;
+                headStatus.push('#'+id);
+                code = ['<div class="ball" id="', id, '">', randInt(max), '</div>'].join('');
+                $('body').append(code);
+
+                color = randColor();
+                ball = $('#' + id);
+                ball.css({"background-color":color, "border-color":ColorLuminance(color, -0.2)});
+                ball.animate({"left": 10+64*i}, 200*i);
+            }
+        }
+
+        // generate 10 bags labelled by 0, 1, 2, ..., 9
+        // a ball goes to a bag in the process of radix sort
+        function makeBags() {
+            for (var i = 0; i < 10; i++) {
+                var id = "bag" + i;
+                var code = ['<div class="bag" id="', id, '">', i, '</div>'].join('');
+                $('body').append(code);
+
+                var bag = $('#'+id);
+                var width = 64*ballSize;
+                bag.css({'top': 8+64*(i+1), "width": width, "left": -width});
+                bag.animate({"left": 10}, 200*(i+1));
+            }
+        }
+
+        // get the digit at pos
+        // eg: getNum(123, 1) -> 3
+        //     getNum(123, 2) -> 2
+        function getNum(num, pos) {
+            for (var i = 1; i < pos; i++) {
+                num = Math.floor(num/10);
+            }
+            return num%10;
+        }
+
+        // move balls from top to bags
+        function run() {
+            var n = headStatus.length;
+            if (n > 0) {
+                var sel = headStatus[0];
+                headStatus.splice(0, 1);
+
+                var obj = $(sel);
+                var val = parseInt(obj.text());
+                var n = getNum(val, turn);
+                bagStatus[n].push(sel);
+                go(obj, n + 2, bagStatus[n].length);
+            } else {
+                if (bagStatus[0].length == ballSize) {
+                    finish = true;
+                }
+                controlRun = false;
+                runback();
+            }
+        }
+
+        // move balls back from bags to the top
+        function runback() {
+            for (var i = 0; i < 10; i++) {
+                var n = bagStatus[i].length;
+                if (n > 0) {
+                    var sel = bagStatus[i][0];
+                    bagStatus[i].splice(0, 1);
+                    headStatus.push(sel);
+                    go($(sel), 1, headStatus.length);
+                    return;
+                }
+            }
+
+            if (finish) {
+                alert('Game Over. Refresh to start a new game.');
+                return;
+            }
+
+            turn = turn+1;
+            controlRun = true;
+            run();
+        }
+
+        // main
+        function play() {
+            if (controlRun) {
+                run();
+            } else {
+                runback();
+            }
+        }
+
+        $(function(){
+            // init
+            ballSize = 10;  // number of balls
+            max = 1000;     // the max random number
+            turn = 1;
+            controlRun = true;
+            bagStatus = [[],[],[],[],[],[],[],[],[],[]];
+            headStatus = [];
+            finish = false;
+
+            $('#btn-start').click(function() {
+                ballSize = $('#size').val()*1;
+                if (ballSize < 2 || ballSize > 20) {
+                    alert('Number should between 2 and 20!')
+                } else {
+                    $('#start').hide();
+                    $('#btn-next').show();
+                    makeBalls(ballSize);
+                    makeBags();
+                    $('#btn-next').click(play);        
+                }
+            });
+        });
+    </script>
+</body>
+
+</html>
